@@ -1,0 +1,223 @@
+// ProjectMGT data model. SQLite has no native enums — string columns hold values
+// from the enums defined in @pmgt/shared (the single source of truth). Do not add
+// a Prisma `enum`; validate at the DTO layer instead.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+  role         String   @default("MEMBER") // UserRole
+  createdAt    DateTime @default(now())
+
+  memberships     ProjectMember[]
+  reportedIssues  Issue[]         @relation("IssueReporter")
+  assignedIssues  Issue[]         @relation("IssueAssignee")
+  pullRequests    PullRequest[]
+
+  @@index([email])
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  key         String   @unique // short prefix used in issue keys, e.g. "PMGT"
+  name        String
+  description String?
+  issueSeq    Int      @default(0) // monotonic counter for issue keys (PMGT-1, PMGT-2…)
+  createdAt   DateTime @default(now())
+
+  members      ProjectMember[]
+  sprints      Sprint[]
+  issues       Issue[]
+  repositories Repository[]
+  milestones   Milestone[]
+}
+
+model ProjectMember {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      String   @default("MEMBER") // UserRole within the project
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+model Sprint {
+  id              String    @id @default(cuid())
+  projectId       String
+  name            String
+  goal            String?
+  status          String    @default("PLANNED") // SprintStatus
+  startDate       DateTime?
+  endDate         DateTime?
+  committedPoints Int       @default(0)
+  completedPoints Int       @default(0)
+  createdAt       DateTime  @default(now())
+
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  issues     Issue[]
+  milestones MilestoneSprint[]
+
+  @@index([projectId])
+}
+
+model Issue {
+  id          String    @id @default(cuid())
+  projectId   String
+  sprintId    String?
+  milestoneId String?
+  key         String    @unique // e.g. "PMGT-12"
+  title       String
+  description String?
+  type        String    @default("TASK") // IssueType
+  status      String    @default("BACKLOG") // IssueStatus
+  priority    String    @default("MEDIUM") // IssuePriority
+  storyPoints Int?
+  boardRank   String // lexorank ordering within status/backlog
+  assigneeId  String?
+  reporterId  String
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprint    Sprint?    @relation(fields: [sprintId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  reporter  User       @relation("IssueReporter", fields: [reporterId], references: [id])
+  assignee  User?      @relation("IssueAssignee", fields: [assigneeId], references: [id])
+
+  commitRefs   CommitIssueRef[]
+  pullRequests IssuePullRequest[]
+
+  @@index([projectId, status])
+  @@index([sprintId])
+  @@index([milestoneId])
+}
+
+model Repository {
+  id            String   @id @default(cuid())
+  projectId     String
+  name          String
+  slug          String
+  defaultBranch String   @default("main")
+  provider      String   @default("SIMULATED") // RepoProvider
+  webhookSecret String @default("") // per-repo HMAC secret for /webhooks/git
+  createdAt     DateTime @default(now())
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commits      Commit[]
+  pullRequests PullRequest[]
+
+  @@unique([projectId, slug])
+  @@index([projectId])
+}
+
+model Commit {
+  id            String   @id @default(cuid())
+  repositoryId  String
+  sha           String
+  message       String
+  authorEmail   String
+  authorName    String
+  branch        String   @default("main")
+  committedAt   DateTime @default(now())
+  pullRequestId String?
+
+  repository  Repository       @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  pullRequest PullRequest?     @relation(fields: [pullRequestId], references: [id], onDelete: SetNull)
+  issueRefs   CommitIssueRef[]
+
+  @@unique([repositoryId, sha])
+  @@index([repositoryId])
+}
+
+// A parsed "Fixes #123" style reference from a commit message to an issue.
+model CommitIssueRef {
+  id       String @id @default(cuid())
+  commitId String
+  issueId  String
+  action   String // CommitRefAction: REFS | FIXES | CLOSES
+
+  commit Commit @relation(fields: [commitId], references: [id], onDelete: Cascade)
+  issue  Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([commitId, issueId])
+  @@index([issueId])
+}
+
+model PullRequest {
+  id           String    @id @default(cuid())
+  repositoryId String
+  number       Int
+  title        String
+  body         String?
+  status       String    @default("OPEN") // PullRequestStatus
+  sourceBranch String
+  targetBranch String    @default("main")
+  authorId     String
+  createdAt    DateTime  @default(now())
+  mergedAt     DateTime?
+
+  repository Repository         @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  author     User               @relation(fields: [authorId], references: [id])
+  commits    Commit[]
+  issues     IssuePullRequest[]
+
+  @@unique([repositoryId, number])
+  @@index([repositoryId])
+}
+
+model IssuePullRequest {
+  id            String @id @default(cuid())
+  issueId       String
+  pullRequestId String
+
+  issue       Issue       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  pullRequest PullRequest @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, pullRequestId])
+  @@index([pullRequestId])
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  status      String   @default("PLANNED") // MilestoneStatus
+  startDate   DateTime?
+  targetDate  DateTime
+  createdAt   DateTime @default(now())
+
+  project Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprints MilestoneSprint[]
+  issues  Issue[]
+
+  @@index([projectId])
+}
+
+model MilestoneSprint {
+  id          String @id @default(cuid())
+  milestoneId String
+  sprintId    String
+
+  milestone Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  sprint    Sprint    @relation(fields: [sprintId], references: [id], onDelete: Cascade)
+
+  @@unique([milestoneId, sprintId])
+  @@index([sprintId])
+}
