@@ -13,6 +13,7 @@ import {
   rankBetween,
   type IssueDto,
   type IssueUpdatedPayload,
+  type IssueCreatedPayload,
 } from "@pmgt/shared";
 import { ProjectAccessService } from "../common/project-access.service";
 import { toIssueDto } from "../common/mappers";
@@ -96,6 +97,7 @@ export class IssuesService {
       },
     });
     this.emitUpdated(issue);
+    this.emitCreated(issue);
     return toIssueDto(issue);
   }
 
@@ -268,5 +270,14 @@ export class IssuesService {
       status: issue.status as IssueStatus,
     };
     this.events.emit(DomainEvent.IssueUpdated, payload);
+  }
+
+  private emitCreated(issue: Issue): void {
+    const payload: IssueCreatedPayload = {
+      projectId: issue.projectId,
+      issueId: issue.id,
+      assigneeId: issue.assigneeId,
+    };
+    this.events.emit(DomainEvent.IssueCreated, payload);
   }
 }

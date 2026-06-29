@@ -11,6 +11,7 @@ export const DomainEvent = {
   PrMerged: "pr.merged",
   PrClosed: "pr.closed",
   MilestoneProgress: "milestone.progress",
+  IssueCreated: "issue.created",
 } as const;
 export type DomainEvent = (typeof DomainEvent)[keyof typeof DomainEvent];
 
@@ -18,6 +19,12 @@ export interface IssueUpdatedPayload {
   projectId: string;
   issueId: string;
   status: IssueStatus;
+}
+
+export interface IssueCreatedPayload {
+  projectId: string;
+  issueId: string;
+  assigneeId: string | null;
 }
 
 export interface SprintUpdatedPayload {
@@ -68,4 +75,5 @@ export interface DomainEventPayloads {
   [DomainEvent.PrMerged]: PrMergedPayload;
   [DomainEvent.PrClosed]: PrClosedPayload;
   [DomainEvent.MilestoneProgress]: MilestoneProgressPayload;
+  [DomainEvent.IssueCreated]: IssueCreatedPayload;
 }
