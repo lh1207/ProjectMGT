@@ -69,10 +69,14 @@ this via `^build`).
 - 2026-06-23 — A1 — Expanded seed data: idempotent multi-project loop adds levihuff.net-themed
   demo projects (WDS, ADPR, FOG, PVE, SITE) alongside PMGT, each with sprint, milestone,
   issues, repo, and commits.
+- 2026-06-28 — A2 — Async LLM auto-assignment on issue create: `issue.created` event →
+  `AutoAssignListener` → Anthropic API; updates `assigneeId` and re-emits `issue.updated`.
+  Env: `ANTHROPIC_API_KEY`, optional `AI_ASSIGN_MODEL`.
 
 ## Event Bus Registry
 | Event | Emitted by | Payload | Consumed by |
 |---|---|---|---|
+| `issue.created` | scrum | `{ projectId, issueId, assigneeId }` | scrum (auto-assign) |
 | `issue.updated` | scrum | `{ projectId, issueId, status }` | realtime, milestone |
 | `sprint.updated` | scrum | `{ projectId, sprintId, status }` | realtime |
 | `commit.created` | repo | `{ projectId, repoId, commitId, refs }` | realtime |
